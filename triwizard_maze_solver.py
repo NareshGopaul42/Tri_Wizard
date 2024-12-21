@@ -10,19 +10,39 @@ GOAL = (GRID_SIZE - 1, GRID_SIZE - 1)
 
 # Generate Maze (Harry Potter Style)
 def generate_maze(size, obstacle_ratio=0.3):
-    maze = np.zeros((size, size))
-    for i in range(size):
-        for j in range(size):
-            if random.random() < obstacle_ratio and (i, j) not in [START, GOAL]:
-                maze[i][j] = 1
+    while True:  # Keep regenerating until start and goal are connected
+        maze = np.zeros((size, size))
+        for i in range(size):
+            for j in range(size):
+                if random.random() < obstacle_ratio and (i, j) not in [START, GOAL]:
+                    maze[i][j] = 1
 
-    # Add Harry Potter-themed elements (walls that shift randomly)
-    shifting_walls = random.sample([(i, j) for i in range(size) for j in range(size) if maze[i][j] == 0], size // 2)
-    for x, y in shifting_walls:
-        if random.random() < 0.5:
-            maze[x][y] = 1  # Make wall shift
+        # Add Harry Potter-themed elements (walls that shift randomly)
+        shifting_walls = random.sample([(i, j) for i in range(size) for j in range(size) if maze[i][j] == 0], size // 2)
+        for x, y in shifting_walls:
+            if random.random() < 0.5:
+                maze[x][y] = 1  # Make wall shift
 
-    return maze
+        # Check if start and goal are connected
+        if is_connected(maze, START, GOAL):
+            return maze
+
+# Check connectivity using BFS
+def is_connected(maze, start, goal):
+    queue = [start]
+    visited = set()
+    while queue:
+        current = queue.pop(0)
+        if current == goal:
+            return True
+        visited.add(current)
+        neighbors = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+        for dx, dy in neighbors:
+            neighbor = (current[0] + dx, current[1] + dy)
+            if (0 <= neighbor[0] < GRID_SIZE and 0 <= neighbor[1] < GRID_SIZE and
+                    maze[neighbor[0]][neighbor[1]] == 0 and neighbor not in visited):
+                queue.append(neighbor)
+    return False
 
 # Heuristic Function
 def heuristic(a, b):
