@@ -5,6 +5,23 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import heapq
 import time
+import pickle
+
+def save_maze(filename, maze):
+    """
+    Save the maze to a file.
+    """
+    with open(filename, 'wb') as f:
+        pickle.dump(maze, f)
+
+
+def load_maze(filename):
+    """
+    Load the maze from a file.
+    """
+    with open(filename, 'rb') as f:
+        return pickle.load(f)
+
 
 # -----------------------------
 # GLOBAL CONFIG
@@ -449,51 +466,42 @@ class AdversarialScenario:
 
 def write_metrics_to_file(metrics_data, filename="metrics.txt"):
     """
-    Write metrics to a file in a structured format for later analysis.
-
-    metrics_data format:
-    {
-        'scenario_type': str,  # 'single' or 'adversarial'
-        'maze_number': int,
-        'time_taken': float,
-        'total_expansions': int,
-        'path_length': int,
-        'reached_goal': bool,
-        'agent_a_expansions': Optional[int],  # Only for adversarial
-        'agent_b_expansions': Optional[int],  # Only for adversarial
-        'agent_a_path_length': Optional[int], # Only for adversarial
-        'agent_b_path_length': Optional[int]  # Only for adversarial
-    }
+    Logs steps and summaries for both single-agent and adversarial scenarios in a grouped format.
     """
     with open(filename, 'a') as f:
-        # Write header if file is empty
+        # Write header for the first log
         if f.tell() == 0:
             f.write("---- METRICS LOG ----\n\n")
 
-        f.write(f"Scenario: {metrics_data['scenario_type']}\n")
-        f.write(f"Maze Number: {metrics_data['maze_number']}\n")
-        f.write(f"Time Taken: {metrics_data['time_taken']:.3f} seconds\n")
-        f.write(f"Total Expansions: {metrics_data['total_expansions']}\n")
-        f.write(f"Path Length: {metrics_data['path_length']}\n")
-        f.write(f"Reached Goal: {'Yes' if metrics_data['reached_goal'] else 'No'}\n")
+        # Log steps (grouped per agent)
+        if 'step' in metrics_data:
+            agent = metrics_data.get('agent', 'Single-Agent')
+            f.write(f"Agent {agent} - Step {metrics_data['step']}: Expanded {metrics_data['expansions']} nodes at {metrics_data['node']} "
+                    f"in {metrics_data['time_taken']:.3f} seconds.\n")
 
-        if metrics_data['scenario_type'] == 'adversarial':
-            f.write(f"Agent A Expansions: {metrics_data.get('agent_a_expansions', 'N/A')}\n")
-            f.write(f"Agent B Expansions: {metrics_data.get('agent_b_expansions', 'N/A')}\n")
-            f.write(f"Agent A Path Length: {metrics_data.get('agent_a_path_length', 'N/A')}\n")
-            f.write(f"Agent B Path Length: {metrics_data.get('agent_b_path_length', 'N/A')}\n")
 
-        f.write("-" * 30 + "\n\n")
+        # Final summary for each agent
+        else:
+            f.write(f"Scenario: {metrics_data['scenario_type']}\n")
+            f.write(f"Maze Number: {metrics_data['maze_number']}\n")
+            f.write(f"Agent: {metrics_data.get('agent', 'N/A')}\n")
+            f.write(f"Time Taken: {metrics_data['time_taken']:.3f} seconds\n")
+            f.write(f"Total Expansions: {metrics_data['total_expansions']}\n")
+            f.write(f"Path Length: {metrics_data['path_length']}\n")
+            f.write(f"Reached Goal: {'Yes' if metrics_data['reached_goal'] else 'No'}\n")
+            f.write("-" * 30 + "\n\n")
 
 
 # -----------------------------
 # SCENARIO RUNNERS
 # -----------------------------
 def run_single_agent_3_mazes():
-    start = time.time()
+    """
+    Run single-agent scenarios for 3 mazes sequentially.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-    fig, axes = plt.subplots(1, 3, figsize=(18,6))
-    # Maximize
+     # Maximize
     manager = plt.get_current_fig_manager()
     try:
         manager.window.showMaximized()
@@ -507,44 +515,59 @@ def run_single_agent_3_mazes():
                 print("Maximize not supported")
 
     fig.subplots_adjust(left=0.025, right=0.78, top=0.92, bottom=0.2, wspace=0.3)
+    plt.suptitle("Single-Agent A* on 3 Mazes", x=0.403)
+    print("Running Single-Agent Scenarios...")
 
-    scenarios = []
     for i in range(3):
+        print(f"Running Single-Agent for Maze {i + 1}")
         maze = generate_maze(GRID_SIZE, OBSTACLE_PROB)
-        scenarios.append(SingleAgentScenario(axes[i], maze))
-        axes[i].set_title(f"Single-Agent Maze #{i+1}")
+        scenario = SingleAgentScenario(axes[i], maze)
 
-    def update_all(frame):
-        for sc in scenarios:
-            sc.update()
+        # Track time
+        start_time = time.time()
+        step_counter = 0
 
-    ani = FuncAnimation(fig, update_all, frames=400, interval=300, repeat=False)
-    plt.suptitle("Single-Agent A* on 3 Mazes (Step-by-Step)", x=0.403)
-    plt.show()
+        while not scenario.done:
+            scenario.update()
+            if scenario.done:
+                break
+            step_counter += 1
+            step_time = time.time() - start_time
 
-    # Record metrics for each maze
-    for i, sc in enumerate(scenarios, 1):
-        start = time.time()
-        while not sc.done:  # Simulate until done
-            sc.update()
-        done_time = time.time() - start
+            # Log each step
+            write_metrics_to_file({
+                'step': step_counter,
+                'agent': 'Single',  # Specify single-agent
+                'expansions': scenario.expansions[0],
+                'node': scenario.current,
+                'time_taken': step_time
+            })
 
-        metrics = {
+
+        # Final metrics
+        total_time = time.time() - start_time
+        reached_goal = scenario.done and scenario.current == scenario.goal
+
+        # Log summary
+        write_metrics_to_file({
             'scenario_type': 'single',
-            'maze_number': i,
-            'time_taken': done_time,  # Exact time for each maze
-            'total_expansions': sc.expansions[0],
-            'path_length': sc.path_len,
-            'reached_goal': sc.done and sc.current == sc.goal
-        }
-        write_metrics_to_file(metrics)
+            'maze_number': i + 1,
+            'agent': 'Single',
+            'time_taken': total_time,
+            'total_expansions': scenario.expansions[0],
+            'path_length': scenario.path_len,
+            'reached_goal': reached_goal
+        })
+    
+    plt.show()
 
 
 def run_adversarial_3_mazes():
-    start = time.time()
-
-    fig, axes = plt.subplots(1, 3, figsize=(18,6))
-    # Maximize
+    """
+    Run adversarial scenarios for 3 mazes sequentially.
+    """
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+     # Maximize
     manager = plt.get_current_fig_manager()
     try:
         manager.window.showMaximized()
@@ -559,52 +582,85 @@ def run_adversarial_3_mazes():
 
     fig.subplots_adjust(left=0.025, right=0.78, top=0.92, bottom=0.2, wspace=0.3)
 
-    scenarios = []
+    print("Running Adversarial Scenarios...")
+
     for i in range(3):
+        print(f"Running Adversarial for Maze {i + 1}")
         maze = generate_maze(GRID_SIZE, OBSTACLE_PROB)
-        scenarios.append(AdversarialScenario(axes[i], maze))
-        axes[i].set_title(f"Adversarial Maze #{i+1}")
+        scenario = AdversarialScenario(axes[i], maze)
 
-    def update_all(frame):
-        for sc in scenarios:
-            sc.update()
+        # Separate step counters for each agent
+        step_A = 0
+        step_B = 0
 
-    ani = FuncAnimation(fig, update_all, frames=400, interval=300, repeat=False)
-    plt.suptitle("Adversarial Agents on 3 Mazes (Turn-by-Turn)", x=0.403)
+        # Track time
+        start_time = time.time()
+
+        # Separate logs for Agent A and Agent B
+        while not scenario.done:
+            # Track the agent that just moved
+            prev_turn = scenario.turn  # Save BEFORE updating
+
+            # Update the scenario (perform the move for the current turn)
+            scenario.update()
+            if scenario.done:
+                break
+            step_time = time.time() - start_time  # AFTER the move, measure time
+
+            # Log the move for the previous turn
+            if prev_turn == 'A':  # Agent A just moved
+                step_A += 1
+                write_metrics_to_file({
+                    'step': step_A,
+                    'agent': 'A',
+                    'expansions': scenario.expansionsA[0],
+                    'node': scenario.posA,
+                    'time_taken': step_time
+                })
+            else:  # Agent B just moved
+                step_B += 1
+                write_metrics_to_file({
+                    'step': step_B,
+                    'agent': 'B',
+                    'expansions': scenario.expansionsB[0],
+                    'node': scenario.posB,
+                    'time_taken': step_time
+                })
+
+        # Final summary for Agent A
+        total_time = time.time() - start_time
+        write_metrics_to_file({
+            'scenario_type': 'adversarial',
+            'maze_number': i + 1,
+            'agent': 'A',
+            'time_taken': total_time,
+            'total_expansions': scenario.expansionsA[0],
+            'path_length': scenario.path_lenA,
+            'reached_goal': scenario.posA == scenario.goal
+        })
+
+        # Final summary for Agent B
+        write_metrics_to_file({
+            'scenario_type': 'adversarial',
+            'maze_number': i + 1,
+            'agent': 'B',
+            'time_taken': total_time,
+            'total_expansions': scenario.expansionsB[0],
+            'path_length': scenario.path_lenB,
+            'reached_goal': scenario.posB == scenario.goal
+        })
+
+
+    plt.suptitle("Adversarial Agents on 3 Mazes", x=0.403)
     plt.show()
-
-    # Record metrics for each maze
-    for i, sc in enumerate(scenarios, 1):
-        start = time.time()
-        while not sc.done:  # Simulate until done
-            sc.update()
-        done_time = time.time() - start
-
-        # Metrics for Agent A
-        metrics_a = {
-            'scenario_type': 'adversarial',
-            'maze_number': i,
-            'time_taken': done_time,  # Exact time for this maze
-            'total_expansions': sc.expansionsA[0],
-            'path_length': sc.path_lenA,
-            'reached_goal': sc.done and sc.posA == sc.goal
-        }
-        write_metrics_to_file(metrics_a)
-
-        # Metrics for Agent B
-        metrics_b = {
-            'scenario_type': 'adversarial',
-            'maze_number': i,
-            'time_taken': done_time,  # Same time, different expansions
-            'total_expansions': sc.expansionsB[0],
-            'path_length': sc.path_lenB,
-            'reached_goal': sc.done and sc.posB == sc.goal
-        }
-        write_metrics_to_file(metrics_b)
 
 
 def clear_metrics_file(filename="metrics.txt"):
+    """
+    Clears the metrics file before starting simulations.
+    """
     open(filename, 'w').close()
+
 
 # -----------------------------
 # MAIN
@@ -614,8 +670,8 @@ if __name__ == "__main__":
     # Clear previous metrics
     clear_metrics_file()
 
-    # 1) Single-Agent
+    # Run Single-Agent Scenarios (All 3 Mazes First)
     run_single_agent_3_mazes()
 
-    # 2) Adversarial
+    # Run Adversarial Scenarios (All 3 Mazes After Single-Agent)
     run_adversarial_3_mazes()
